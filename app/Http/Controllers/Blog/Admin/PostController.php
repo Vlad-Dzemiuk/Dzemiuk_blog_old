@@ -5,22 +5,25 @@ namespace App\Http\Controllers\Blog\Admin;
 use App\Repositories\BlogPostRepository;
 use App\Repositories\BlogCategoryRepository;
 use App\Http\Requests\BlogPostUpdateRequest;
+use Illuminate\Foundation\Bus\DispatchesJobs;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use App\Models\BlogPost;
 use App\Http\Requests\BlogPostCreateRequest;
+use App\Jobs\BlogPostAfterCreateJob;
+use App\Jobs\BlogPostAfterDeleteJob;
 
 class PostController extends BaseController
 {
-    /**
-     * @var BlogPostRepository
+    use DispatchesJobs;
+/*
+* @var BlogPostRepository
      */
     private $blogPostRepository;
-    /**
+    /*
      * @var BlogCategoryRepository
      */
     private $blogCategoryRepository; // властивість через яку будемо звертатись в репозиторій категорій
-
     public function __construct()
     {
         parent::__construct();
@@ -28,14 +31,18 @@ class PostController extends BaseController
         $this->blogCategoryRepository = app(BlogCategoryRepository::class);
     }
 
+    /*
+     * Display a listing of the resource.
+     */
     public function index()
     {
         $paginator = $this->blogPostRepository->getAllWithPaginate();
 
         return view('blog.admin.posts.index', compact('paginator'));
+
     }
 
-    /**
+    /*
      * Show the form for creating a new resource.
      */
     public function create()
@@ -45,9 +52,10 @@ class PostController extends BaseController
 
 
         return view('blog.admin.posts.edit', compact('item', 'categoryList'));
+
     }
 
-    /**
+    /*
      * Store a newly created resource in storage.
      */
     public function store(BlogPostCreateRequest $request)
@@ -57,6 +65,8 @@ class PostController extends BaseController
         $item = (new BlogPost())->create($data); //створюємо об'єкт і додаємо в БД
 
         if ($item) {
+            $job = new BlogPostAfterCreateJob($item);
+            $this->dispatch($job);
             return redirect()
                 ->route('blog.admin.posts.edit', [$item->id])
                 ->with(['success' => 'Успішно збережено']);
@@ -67,7 +77,7 @@ class PostController extends BaseController
         }
     }
 
-    /**
+    /*
      * Display the specified resource.
      */
     public function show(string $id)
@@ -75,7 +85,7 @@ class PostController extends BaseController
         //
     }
 
-    /**
+    /*
      * Show the form for editing the specified resource.
      */
     public function edit(string $id)
@@ -89,7 +99,7 @@ class PostController extends BaseController
         return view('blog.admin.posts.edit', compact('item', 'categoryList'));
     }
 
-    /**
+    /*
      * Update the specified resource in storage.
      */
     public function update(BlogPostUpdateRequest $request, string $id)
@@ -115,7 +125,6 @@ class PostController extends BaseController
                 ->with(['msg' => 'Помилка збереження'])
                 ->withInput();
         }
-
     }
 
     /**
@@ -126,8 +135,8 @@ class PostController extends BaseController
         $result = BlogPost::destroy($id); //софт деліт, запис лишається
 
         //$result = BlogPost::find($id)->forceDelete(); //повне видалення з БД
-
         if ($result) {
+            BlogPostAfterDeleteJob::dispatch($id)->delay(20);
             return redirect()
                 ->route('blog.admin.posts.index')
                 ->with(['success' => "Запис id[$id] видалено"]);
@@ -135,5 +144,6 @@ class PostController extends BaseController
             return back()
                 ->withErrors(['msg' => 'Помилка видалення']);
         }
+
     }
 }
